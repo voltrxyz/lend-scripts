@@ -1,4 +1,5 @@
 // NOTE: THIS ASSUMES THE USER HAS REQUESTED A WITHDRAWAL, THROWS ERROR IF NOT
+import "dotenv/config";
 import {
   Connection,
   Keypair,

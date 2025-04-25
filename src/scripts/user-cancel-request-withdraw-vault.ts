@@ -1,4 +1,5 @@
 // NOTE: WILL ONLY SUCCEED IF THERE IS A REQUEST WITHDRAWAL OUTSTANDING
+import "dotenv/config";
 import {
   Connection,
   Keypair,

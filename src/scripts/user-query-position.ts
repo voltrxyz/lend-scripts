@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import * as fs from "fs";
 import {

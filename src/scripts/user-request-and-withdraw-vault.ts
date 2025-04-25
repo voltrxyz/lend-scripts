@@ -1,4 +1,5 @@
 // NOTE: THIS ONLY WORKS IF AND ONLY IF WITHDAWAL WAITING PERIOD IS 0
+import "dotenv/config";
 import {
   Connection,
   Keypair,

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { VoltrClient } from "@voltr/vault-sdk";
 import { vaultAddress } from "../../config/base";
