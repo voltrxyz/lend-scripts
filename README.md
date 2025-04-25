@@ -269,3 +269,125 @@ Feel free to extend these base scripts for more specific use cases or integratio
 ---
 
 For questions or support regarding the Voltr protocol itself, please refer to the official Voltr documentation.
+
+---
+
+## Lending Strategy Extensions (voltr-lend-scripts)
+
+The following sections detail the additions specific to the `voltr-lend-scripts` project, which builds upon the base functionality to include lending strategy interactions.
+
+### Additional Configuration (`config/lend.ts`)
+
+This file complements `config/base.ts` and holds parameters specific to lending strategies and the necessary Jupiter swaps.
+
+- **Strategy Output Token:**
+
+  - `outputMintAddress`: **Required.** The mint address of the token the target lending protocol uses (e.g., USDC, SOL). If this differs from `assetMintAddress` in `config/base.ts`, Jupiter swap will be automatically used during strategy deposit/withdraw.
+  - `outputTokenProgram`: **Required.** The SPL Token program ID for the `outputMintAddress`.
+
+- **Strategy Action Parameters:**
+
+  - `depositStrategyAmount`: The amount of the **vault's base asset** (defined in `config/base.ts`) to deposit into the specified strategies, denominated in the smallest units of the base asset. A value of `-1` might require specific handling depending on the script's logic (e.g., use entire vault balance available for strategies).
+  - `withdrawStrategyAmount`: The amount of the **output token** (defined by `outputMintAddress`) to withdraw from the specified strategies, denominated in the smallest units of the output token. A value of `-1` might require specific handling (e.g., withdraw entire position from strategy).
+
+- **Jupiter Swap Settings:** (Only used if `outputMintAddress` differs from `assetMintAddress`)
+
+  - `jupSwapSlippageBps`: Allowed slippage for Jupiter swaps in basis points (100 bps = 1%).
+  - `jupSwapMaxAccounts`: The maximum number of accounts Jupiter's routing can use for a swap.
+
+- **Protocol-Specific Variables:** These must be configured based on the `outputMintAddress` and the specific lending protocol market being targeted. The constants file (`src/constants/`) provides addresses for common markets.
+  - **Solend:** `solendCounterpartyTa`, `solendCollateralMint`, `solendReserve`, `solendPythOracle`, `solendSwitchboardOracle`.
+  - **Marginfi:** `marginfiBank`, `marginfiAccount` (**Must be filled after running `manager-init-strategies.ts` for Marginfi**), `marginfiOracle`.
+  - **Klend:** `klendLendingMarket`, `klendReserve`.
+  - **Drift:** `driftMarketIndex`, `driftOracle`.
+
+### New Admin Script
+
+- **`src/scripts/admin-add-adaptor.ts`**
+  - **Purpose:** Enables the vault to use lending strategies by adding the official Voltr Lend Adaptor program (`ADAPTOR_PROGRAM_ID` found in `src/constants/lend.ts`) to the vault's list of approved adaptors.
+  - **Requires:** `vaultAddress` (from `config/base.ts`).
+  - **Uses:** `ADMIN_FILE_PATH`.
+
+### New Manager Scripts
+
+These scripts are executed by the vault's designated Manager.
+
+- **`src/scripts/manager-init-strategies.ts`**
+
+  - **Purpose:** Initializes the necessary on-chain accounts for the vault to interact with specific lending protocols (Solend, Marginfi, Klend, Drift). This includes creating the Voltr strategy account PDA, associated token accounts owned by the strategy PDA, and any protocol-specific accounts (like the Marginfi user account). This only needs to be run once per protocol per vault.
+  - **Requires:** `vaultAddress`, `assetMintAddress`, `assetTokenProgram` (from `config/base.ts`), `outputMintAddress`, and relevant protocol constants (like `solendCounterpartyTa`, `marginfiBank`, etc.) from `config/lend.ts`.
+  - **Outputs:** If initializing Marginfi, it prints the newly generated `marginfiAccount` public key. **You must copy this value and update `config/lend.ts`**.
+  - **Uses:** `MANAGER_FILE_PATH`. May update the vault's LUT if `useLookupTable` is true.
+
+- **`src/scripts/manager-deposit-strategies.ts`**
+
+  - **Purpose:** Deposits funds _from_ the vault _into_ the initialized lending strategies (Solend, Marginfi, Klend, Drift).
+  - **Handles Swaps:** If the vault's `assetMintAddress` is different from the strategy's required `outputMintAddress`, this script automatically uses Jupiter swap (via `src/utils/setup-jupiter-swap.ts`) to convert the asset before depositing into the lending protocol.
+  - **Requires:** `vaultAddress`, `assetMintAddress`, `assetTokenProgram`, `lookupTableAddress` (if used) from `config/base.ts`. Also requires `depositStrategyAmount`, `outputMintAddress`, Jupiter settings, and all relevant, correctly configured protocol variables (like `solendReserve`, `marginfiBank`, `marginfiAccount`, `klendReserve`, `driftMarketIndex`, etc.) from `config/lend.ts`.
+  - **Uses:** `MANAGER_FILE_PATH`.
+
+- **`src/scripts/manager-withdraw-strategies.ts`**
+  - **Purpose:** Withdraws funds _from_ the lending strategies _back into_ the main vault account.
+  - **Handles Swaps:** If the strategy's `outputMintAddress` is different from the vault's `assetMintAddress`, this script automatically uses Jupiter swap to convert the withdrawn funds back to the vault's base asset.
+  - **Requires:** `vaultAddress`, `assetMintAddress`, `assetTokenProgram`, `lookupTableAddress` (if used) from `config/base.ts`. Also requires `withdrawStrategyAmount`, `outputMintAddress`, `outputTokenProgram`, Jupiter settings, and all relevant, correctly configured protocol variables from `config/lend.ts`.
+  - **Uses:** `MANAGER_FILE_PATH`.
+
+### Lending Strategy Flow
+
+This outlines the typical sequence for setting up and managing lending strategies:
+
+1.  **Complete Basic Vault Setup:** Follow steps 1-4 in the [Basic Usage Flow](#basic-usage-flow) to initialize the vault and configure `config/base.ts`.
+2.  **Configure Lending Parameters:** Edit `config/lend.ts`. Define the `outputMintAddress`, `outputTokenProgram`, strategy deposit/withdraw amounts, Jupiter settings, and ensure the correct variables are uncommented/set for the specific lending protocols and markets you intend to use. Leave `marginfiAccount` blank initially if using Marginfi.
+3.  **Add Lend Adaptor (Admin):** Run `pnpm ts-node src/scripts/admin-add-adaptor.ts` to authorize the vault to use the lending adaptor.
+4.  **Initialize Strategies (Manager):** Run `pnpm ts-node src/scripts/manager-init-strategies.ts` to set up the on-chain accounts for each lending protocol interaction.
+5.  **(Marginfi Only) Update Config:** If you initialized Marginfi, copy the `Marginfi account:` public key printed by the previous script and paste it into the `marginfiAccount` field in `config/lend.ts`.
+6.  **Ensure Vault has Funds:** Use `user-deposit-vault.ts` (as the User) if the vault needs funds.
+7.  **Deposit into Strategies (Manager):** Run `pnpm ts-node src/scripts/manager-deposit-strategies.ts` to allocate funds from the vault to the lending protocols.
+8.  **Query Positions:** Use `query-strategy-positions.ts` to see the updated allocation across strategies.
+9.  **(Optional) Withdraw from Strategies (Manager):** Run `pnpm ts-node src/scripts/manager-withdraw-strategies.ts` to bring funds back from the lending protocols into the vault.
+10. **(Optional) User Withdrawal:** Users can withdraw from the vault as usual using the `user-*` withdrawal scripts, which will trigger withdrawals from strategies if needed (handled by the vault program).
+
+### Protocol Integration Details
+
+- **Lending Protocols:** The scripts support interaction with Solend, Marginfi, Klend, and Drift (Spot Market) via the Voltr Lend Adaptor (`aVoLTR...`). The necessary addresses and program IDs are defined in `src/constants/`. Ensure you select the correct market/reserve/bank addresses in `config/lend.ts` corresponding to your desired `outputMintAddress`.
+- **Jupiter Swap:** Swapping between the vault's base asset and the lending protocol's required asset is handled automatically by the `manager-deposit-strategies.ts` and `manager-withdraw-strategies.ts` scripts if `assetMintAddress` and `outputMintAddress` differ. This uses the `@jup-ag/api` via fetch requests orchestrated by `src/utils/setup-jupiter-swap.ts`. Configuration for slippage and routing complexity is in `config/lend.ts`. Pyth oracle prices are used internally by the swap utility.
+
+### Updated Project Structure (voltr-lend-scripts)
+
+```
+voltr-lend-scripts
+├── config/
+│   ├── base.ts             # Base vault configuration
+│   └── lend.ts             # Lending strategy & Jupiter config
+├── src/
+│   ├── constants/          # Protocol addresses and constants
+│   │   ├── solend.ts
+│   │   ├── base.ts
+│   │   ├── marginfi.ts
+│   │   ├── klend.ts
+│   │   ├── jupiter.ts
+│   │   ├── lend.ts         # Aggregates protocol constants
+│   │   └── drift.ts
+│   ├── utils/
+│   │   ├── setup-jupiter-swap.ts # Jupiter swap helper
+│   │   └── helper.ts       # Core utility functions (tx sending, ATAs, LUTs)
+│   └── scripts/            # Executable scripts
+│       ├── admin-init-vault.ts
+│       ├── admin-add-adaptor.ts # NEW
+│       ├── admin-update-vault.ts
+│       ├── admin-harvest-fee.ts
+│       ├── manager-init-strategies.ts # NEW
+│       ├── manager-deposit-strategies.ts # NEW
+│       ├── manager-withdraw-strategies.ts # NEW
+│       ├── user-deposit-vault.ts
+│       ├── user-request-withdraw-vault.ts
+│       ├── user-withdraw-vault.ts
+│       ├── user-request-and-withdraw-vault.ts
+│       ├── user-query-position.ts
+│       └── query-strategy-positions.ts
+├── node_modules/           # Project dependencies
+├── pnpm-lock.yaml          # Dependency lockfile
+├── package.json            # Project metadata and dependencies
+├── tsconfig.json           # TypeScript compiler options
+└── README.md               # This file (now including lending extensions)
+```
