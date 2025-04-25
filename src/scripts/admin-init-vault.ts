@@ -61,7 +61,7 @@ const initVaultHandler = async () => {
 
   await connection.confirmTransaction(txSig0, "finalized");
   console.log(`Vault initialized and adaptor added with signature: ${txSig0}`);
-  console.log(`Update address into variables.ts`);
+  console.log(`Update address into config/base.ts`);
   console.log("Vault:", vault.toBase58());
 
   if (useLookupTable) {
@@ -89,7 +89,7 @@ const initVaultHandler = async () => {
     );
 
     console.log(`LUT created with signature: ${txSig1}`);
-    console.log(`Update address into variables.ts`);
+    console.log(`Update address into config/base.ts`);
     console.log("Lookup Table:", lut.toBase58());
   }
 };
