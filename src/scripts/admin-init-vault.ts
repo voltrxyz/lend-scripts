@@ -35,7 +35,7 @@ const vaultAssetMint = new PublicKey(assetMintAddress);
 const connection = new Connection(process.env.HELIUS_RPC_URL!);
 const vc = new VoltrClient(connection);
 
-const initVaultAndAddAdaptorHandler = async () => {
+const initVaultHandler = async () => {
   const createInitializeVaultIx = await vc.createInitializeVaultIx(
     vaultParams,
     {
@@ -94,7 +94,7 @@ const initVaultAndAddAdaptorHandler = async () => {
 };
 
 const main = async () => {
-  await initVaultAndAddAdaptorHandler();
+  await initVaultHandler();
 };
 
 main();
