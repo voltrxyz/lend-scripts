@@ -1,3 +1,4 @@
+import "dotenv/config";
 import {
   Connection,
   Keypair,
@@ -10,7 +11,7 @@ import {
   setupAddressLookupTable,
 } from "../utils/helper";
 import { VoltrClient } from "@voltr/vault-sdk";
-import { useLookupTable } from "../../config/base";
+import { useLookupTable, vaultAddress } from "../../config/base";
 import { ADAPTOR_PROGRAM_ID } from "../constants/lend";
 
 const payerKpFile = fs.readFileSync(process.env.ADMIN_FILE_PATH!, "utf-8");
@@ -19,8 +20,7 @@ const payerSecret = Uint8Array.from(payerKpData);
 const payerKp = Keypair.fromSecretKey(payerSecret);
 const payer = payerKp.publicKey;
 
-const vaultKp = Keypair.generate();
-const vault = vaultKp.publicKey;
+const vault = new PublicKey(vaultAddress);
 
 const connection = new Connection(process.env.HELIUS_RPC_URL!);
 const vc = new VoltrClient(connection);
@@ -41,13 +41,11 @@ const addAdaptorHandler = async () => {
     transactionIxs0,
     process.env.HELIUS_RPC_URL!,
     payerKp,
-    [vaultKp]
+    []
   );
 
   await connection.confirmTransaction(txSig0, "finalized");
-  console.log(`Vault initialized and adaptor added with signature: ${txSig0}`);
-  console.log(`Update address into variables.ts`);
-  console.log("Vault:", vault.toBase58());
+  console.log(`Adaptor added to vault with signature: ${txSig0}`);
 
   if (useLookupTable) {
     const transactionIxs1: TransactionInstruction[] = [];
@@ -73,9 +71,7 @@ const addAdaptorHandler = async () => {
       50_000
     );
 
-    console.log(`LUT created with signature: ${txSig1}`);
-    console.log(`Update address into variables.ts`);
-    console.log("Lookup Table:", lut.toBase58());
+    console.log(`LUT updated with signature: ${txSig1}`);
   }
 };
 
